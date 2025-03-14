@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiosdwan"
+version = "0.1.0"
+description = "An asynchronous Python client for Cisco Catalyst SD-WAN (vManage)."
+authors = [
+  { name = "Lionel Cottin", email = "lionel.cottin@gmail.com" }
+]
+license = "GNU GPLv3"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["sdwan", "cisco", "networking", "async", "httpx"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU GPLv3",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "httpx>=0.23.0",
+]
