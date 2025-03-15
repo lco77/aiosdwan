@@ -27,6 +27,9 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+__NAME__ = "aiosdwan"
+__VERSION__ = "0.1.0"
+__SEMAPHORE__ = 50
 
 @dataclass
 class DeviceData:
@@ -107,10 +110,9 @@ class Vmanage:
     def __init__(
         self,
         host: str,
-        verify: bool = False,
         port: int = 443,
-        semaphore: int = 40,
-        debug: bool = False
+        verify: bool = False,
+        semaphore: asyncio.Semaphore = None
     ):
         """
         Constructor for Vmanage. Does NOT authenticate on its own;
@@ -119,14 +121,19 @@ class Vmanage:
         self.host = host
         self.port = port
         self.verify = verify
-        self.semaphore = semaphore
-        self._debug = debug
+
+        # Semaphore
+        if semaphore is None:
+            self.semaphore = asyncio.Semaphore(__SEMAPHORE__)
+        else:
+            self.semaphore = semaphore
+
 
         # These will be set by connect() after successful login
         self.base_url: Optional[str] = None
         self.session: Optional[httpx.AsyncClient] = None
         self.headers: Optional[Dict[str, Any]] = None
-
+    
     async def __get(self, path: str, params: Dict[str, Any] = None) -> Optional[str]:
         """
         Internal helper for asynchronous GET requests.
@@ -279,7 +286,20 @@ class Vmanage:
         except json.JSONDecodeError:
             return None
 
-    async def get_all(self, tasks: List[Any]) -> List[Any]:
+    async def run_task(self, task: Any)->Any:
+        """
+        Execute a coroutine, respecting a semaphore limit.
+
+        Args:
+            task: A coroutine object (e.g., [self.get('/endpoint')).
+
+        Returns:
+            Task result
+        """
+        async with self.semaphore:
+                return await task
+
+    async def run_tasks(self, tasks: List[Any]) -> List[Any]:
         """
         Execute multiple coroutines concurrently, respecting a semaphore limit.
 
@@ -289,13 +309,7 @@ class Vmanage:
         Returns:
             A list of results from each task, in the same order.
         """
-        sem = asyncio.Semaphore(self.semaphore)
-
-        async def sem_task(task):
-            async with sem:
-                return await task
-
-        return await asyncio.gather(*(sem_task(t) for t in tasks))
+        return await asyncio.gather(*(self.run_task(t) for t in tasks))
 
 
 async def connect(
@@ -304,8 +318,7 @@ async def connect(
     password: str,
     verify: bool = False,
     port: int = 443,
-    semaphore: int = 40,
-    debug: bool = False
+    semaphore: asyncio.Semaphore = None
 ) -> Vmanage:
     """
     Create and return an authenticated Vmanage instance using async logic.
@@ -316,7 +329,7 @@ async def connect(
     Raises:
         ConnectionError: if the login process fails.
     """
-    vmanage = Vmanage(host, verify, port, semaphore, debug)
+    vmanage = Vmanage(host=host, port=port, verify=verify, semaphore=semaphore)
 
     base_url = f"https://{host}:{port}"
     async with httpx.AsyncClient(verify=verify) as client:
@@ -379,7 +392,7 @@ async def get_devices(vmanage: Vmanage) -> Dict[str, DeviceData]:
         vmanage.get("/system/device/vedges"),
         vmanage.get("/device")
     ]
-    results = await vmanage.get_all(tasks)
+    results = await vmanage.run_tasks(tasks)
     if not all(results):
         return {}
 
